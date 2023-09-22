@@ -324,8 +324,14 @@ class XlaHelpers {
 
   template <typename T>
   static xla::Literal Range(T start, T end, T step) {
+    int64_t range_size = (int64_t)std::ceil((end - start) / step);
+    xla::Array<T> range({range_size});
+    range.FillWithMultiples(step);
+    range.Each([start](absl::Span<const int64_t> index, T* value) {
+      *value += start;
+    });
     return xla::LiteralUtil::CreateR1<T>(
-        runtime::util::Range<T>(start, end, step));
+        absl::MakeConstSpan(range.data(), range.dim(0)));
   }
 
   static xla::PrecisionConfig::Precision mat_mul_precision() {
