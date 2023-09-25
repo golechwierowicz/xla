@@ -446,6 +446,10 @@ class ComputationClient {
   // after the last ':' character of the device string.
   static int64_t GetDeviceOrdinal(const std::string& device);
 
+  static void RegisterPjRtPlugin(std::string name, std::string library_path);
+
+  static std::unordered_map<std::string, std::string>& GetPjRtPlugins();
+
  protected:
   // Metrics common to all client interfaces.
   static metrics::Metric* TransferToServerMetric();

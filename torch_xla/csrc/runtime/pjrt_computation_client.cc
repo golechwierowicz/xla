@@ -162,7 +162,6 @@ PjRtComputationClient::PjRtComputationClient() {
     XLA_CHECK_OK(pjrt::LoadPjrtPlugin(
         "xpu", sys_util::GetEnvString(env::kEnvXpuLibraryPath, "libxpu.so")));
     client_ = std::move(xla::GetCApiClient("XPU").value());
-
   } else if (device_type == "NEURON") {
     TF_VLOG(1) << "Initializing PjRt NEURON client...";
     XLA_CHECK_OK(pjrt::LoadPjrtPlugin(
@@ -170,11 +169,18 @@ PjRtComputationClient::PjRtComputationClient() {
                                          "libneuronpjrt.so")));
     client_ = std::move(xla::GetCApiClient("NEURON").value());
   } else {
-    XLA_ERROR() << absl::StrFormat("Unknown %s '%s'", env::kEnvPjRtDevice,
-                                   device_type);
+    auto plugins = ComputationClient::GetPjRtPlugins();
+    if (plugins.find(device_type) != plugins.end()) {
+      TF_VLOG(1) << "Initializing client for PjRt plugin " << device_type;
+      XLA_CHECK_OK(pjrt::LoadPjrtPlugin(
+        device_type, plugins[device_type]));
+      tsl::Status init_status = pjrt::InitializePjrtPlugin(device_type);
+      XLA_CHECK_OK(init_status);
+      client_ = std::move(xla::GetCApiClient(absl::AsciiStrToUpper(device_type)).value());
+    }
   }
 
-  XLA_CHECK(client_.get() != nullptr);
+  XLA_CHECK(client_.get() != nullptr) << absl::StrFormat("Unknown %s '%s'", env::kEnvPjRtDevice, device_type);
 
   // PjRtDevice IDs are not guaranteed to be dense, so we need to track
   // a device's global ordinal separately from its device ID. Order the

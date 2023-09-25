@@ -13,6 +13,8 @@ import torch
 import torch_xla.utils.utils as xu
 import torch_xla.core.xla_env_vars as xenv
 import torch_xla.core.xla_model as xm
+from torch_xla.experimental import plugins
+
 
 _GCE_METADATA_ROOT_URL = 'http://metadata.google.internal/computeMetadata/v1'
 _ACCELERATOR_TYPE_TO_HOST_BOUNDS = {
@@ -286,3 +288,23 @@ def discover_master_worker_ip(use_localhost: bool = True) -> str:
 
   master_worker_id = int(t.cpu())
   return worker_ips[master_worker_id]
+
+
+class TpuPlugin(plugins.DevicePlugin):
+  def library_path(self):
+    return os.getenv('TPU_LIBRARY_PATH')
+
+  def host_index(self):
+    return worker_id()
+
+  def configure_single_process(self):
+    return configure_one_chip_topology()
+
+  def configure_multiprocess(self, local_rank, local_world_size):
+    return configure_topology(local_rank, local_world_size)
+
+  def local_process_count(self):
+    return num_available_chips()
+
+
+# plugins.register_plugin('tpu', TpuPlugin())
