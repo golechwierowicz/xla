@@ -623,8 +623,8 @@ PjRtComputationClient::ExecuteReplicated(
     // TODO: tune and document cost estimate
     pool_.ParallelFor(arguments.size(), 30000, [&](int64_t start, int64_t end) {
       tsl::profiler::TraceMe activity(
-        "PjRtComputationClient::ExecuteReplicated_argument_handle_shard",
-        tsl::profiler::TraceMeLevel::kInfo);
+          "PjRtComputationClient::ExecuteReplicated_argument_handle_shard",
+          tsl::profiler::TraceMeLevel::kInfo);
       for (int32_t i = start; i < end; ++i) {
         auto pjrt_data =
             std::dynamic_pointer_cast<PjRtShardedData>(arguments[i]);
@@ -687,8 +687,8 @@ PjRtComputationClient::ExecuteReplicated(
     // TODO: tune and document cost estimate
     pool_.ParallelFor(num_outputs, 30000, [&](int64_t start, int64_t end) {
       tsl::profiler::TraceMe activity(
-        "PjRtComputationClient::ExecuteReplicated_result_handle_shard",
-        tsl::profiler::TraceMeLevel::kInfo);
+          "PjRtComputationClient::ExecuteReplicated_result_handle_shard",
+          tsl::profiler::TraceMeLevel::kInfo);
       for (int32_t i = start; i < end; ++i) {
         std::vector<std::shared_ptr<PjRtData>> shards(devices.size());
         for (int32_t d = 0; d < devices.size(); d++) {
@@ -709,7 +709,7 @@ PjRtComputationClient::ExecuteReplicated(
   }
 
   pool_.Schedule([&, this, returned_futures = std::move(*returned_futures),
-                 timed]() mutable {
+                  timed]() mutable {
     // Grab the shared lock and block the `WaitDeviceOps` until buffer is
     // ready. Since this is the SPMD code path. There is no points to grab
     // devices lock for every individual device.

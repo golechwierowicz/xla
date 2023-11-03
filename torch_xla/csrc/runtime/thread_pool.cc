@@ -5,9 +5,9 @@
 #include <exception>
 #include <mutex>
 
-#include "tsl/platform/threadpool.h"
 #include "torch_xla/csrc/runtime/metrics.h"
 #include "torch_xla/csrc/runtime/tf_logging.h"
+#include "tsl/platform/threadpool.h"
 
 namespace torch_xla {
 namespace runtime {
@@ -17,7 +17,8 @@ namespace {
 tsl::thread::ThreadPool* GetThreadPool() {
   static size_t num_threads = sys_util::GetEnvInt(
       "XLA_THREAD_POOL_SIZE", std::thread::hardware_concurrency());
-  static tsl::thread::ThreadPool pool(tsl::Env::Default(), "pytorchxla", num_threads);
+  static tsl::thread::ThreadPool pool(tsl::Env::Default(), "pytorchxla",
+                                      num_threads);
   return &pool;
 }
 

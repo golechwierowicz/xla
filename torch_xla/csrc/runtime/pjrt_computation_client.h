@@ -104,7 +104,8 @@ class PjRtComputationClient : public ComputationClient {
   std::shared_ptr<std::vector<std::string>> replication_devices_;
   std::unordered_map<std::string, std::unique_ptr<std::shared_mutex>>
       device_locks_;
-  tsl::thread::ThreadPool pool_ = tsl::thread::ThreadPool(tsl::Env::Default(), "pjrt", std::thread::hardware_concurrency());
+  tsl::thread::ThreadPool pool_ = tsl::thread::ThreadPool(
+      tsl::Env::Default(), "pjrt", std::thread::hardware_concurrency());
 
   xla::PjRtDevice* StringToPjRtDevice(const std::string& device);
   std::shared_lock<std::shared_mutex> lock_device_shared(
@@ -232,7 +233,6 @@ class PjRtComputationClient : public ComputationClient {
 
   // Use XLA replication to re-assemble the sharded data.
   std::shared_ptr<PjRtData> ReplicateShardedData(const DataPtr& handle);
-
 };
 
 }  // namespace runtime
