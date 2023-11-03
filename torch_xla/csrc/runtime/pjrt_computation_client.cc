@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "absl/strings/ascii.h"
+#include "absl/synchronization/blocking_counter.h"
 #include "absl/types/span.h"
 #include "pjrt_computation_client.h"
 #include "torch_xla/csrc/runtime/computation_client.h"
@@ -618,9 +619,9 @@ PjRtComputationClient::ExecuteReplicated(
         "PjRtComputationClient::ExecuteReplicated_argument_handle",
         tsl::profiler::TraceMeLevel::kInfo);
 
-    util::MultiWait mwait(arguments.size());
+    absl::BlockingCounter mwait(arguments.size());
     // TODO: tune and document cost estimate
-    pool_.ParallelFor(arguments.size(), 100000, [&](int64_t start, int64_t end) {
+    pool_.ParallelFor(arguments.size(), 30000, [&](int64_t start, int64_t end) {
       tsl::profiler::TraceMe activity(
         "PjRtComputationClient::ExecuteReplicated_argument_handle_shard",
         tsl::profiler::TraceMeLevel::kInfo);
@@ -638,8 +639,8 @@ PjRtComputationClient::ExecuteReplicated(
           XLA_CHECK(pjrt_device->IsAddressable()) << pjrt_device->DebugString();
 
           argument_handles[d][i] = shard->buffer.get();
-          mwait.Done();
         }
+        mwait.DecrementCount();
       }
     });
     mwait.Wait();
@@ -682,9 +683,9 @@ PjRtComputationClient::ExecuteReplicated(
                                : std::vector<xla::Shape>({result_shape});
     XLA_CHECK_EQ(output_shapes.size(), num_outputs);
 
-    util::MultiWait mwait(num_outputs);
+    absl::BlockingCounter mwait(num_outputs);
     // TODO: tune and document cost estimate
-    pool_.ParallelFor(num_outputs, 100000, [&](int64_t start, int64_t end) {
+    pool_.ParallelFor(num_outputs, 30000, [&](int64_t start, int64_t end) {
       tsl::profiler::TraceMe activity(
         "PjRtComputationClient::ExecuteReplicated_result_handle_shard",
         tsl::profiler::TraceMeLevel::kInfo);
@@ -701,7 +702,7 @@ PjRtComputationClient::ExecuteReplicated(
             xla::HloSharding::Unknown().ToProto());
         TF_VLOG(5) << "Created sharded data with shape "
                    << data_handles[i]->shape().ToString();
-        mwait.Done();
+        mwait.DecrementCount();
       }
     });
     mwait.Wait();

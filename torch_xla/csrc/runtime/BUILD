@@ -107,6 +107,7 @@ cc_library(
     "@tsl//tsl/platform/cloud:gcs_file_system",
     "@tsl//tsl/platform:env",
     "@com_google_absl//absl/strings",
+    "@com_google_absl//absl/synchronization",
     "@com_google_absl//absl/types:span",
   ],
 )
