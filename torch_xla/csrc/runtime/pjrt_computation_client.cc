@@ -618,9 +618,13 @@ PjRtComputationClient::ExecuteReplicated(
         "PjRtComputationClient::ExecuteReplicated_argument_handle",
         tsl::profiler::TraceMeLevel::kInfo);
 
-    auto mwait = std::make_shared<util::MultiWait>(arguments.size());
-    for (int32_t i = 0; i < arguments.size(); ++i) {
-      auto buffer_converter = [&, i]() {
+    util::MultiWait mwait(arguments.size());
+    // TODO: tune and document cost estimate
+    pool_.ParallelFor(arguments.size(), 100000, [&](int64_t start, int64_t end) {
+      tsl::profiler::TraceMe activity(
+        "PjRtComputationClient::ExecuteReplicated_argument_handle_shard",
+        tsl::profiler::TraceMeLevel::kInfo);
+      for (int32_t i = start; i < end; ++i) {
         auto pjrt_data =
             std::dynamic_pointer_cast<PjRtShardedData>(arguments[i]);
         XLA_CHECK_EQ(pjrt_data->shards.size(), devices.size())
@@ -634,12 +638,11 @@ PjRtComputationClient::ExecuteReplicated(
           XLA_CHECK(pjrt_device->IsAddressable()) << pjrt_device->DebugString();
 
           argument_handles[d][i] = shard->buffer.get();
+          mwait.Done();
         }
-      };
-      env::ScheduleIoClosure(
-          util::MultiWait::Completer(mwait, std::move(buffer_converter)));
-    }
-    mwait->Wait();
+      }
+    });
+    mwait.Wait();
   }
 
   xla::ExecuteOptions execute_options;
@@ -679,15 +682,13 @@ PjRtComputationClient::ExecuteReplicated(
                                : std::vector<xla::Shape>({result_shape});
     XLA_CHECK_EQ(output_shapes.size(), num_outputs);
 
-    // HACK: we don't use the sharding on this DataPtr anyway
-    std::vector<xla::OpSharding> output_shardings =
-        std::vector<xla::OpSharding>(output_shapes.size(),
-                                     xla::HloSharding::Unknown().ToProto());
-    XLA_CHECK_EQ(output_shapes.size(), output_shardings.size());
-
-    auto mwait = std::make_shared<util::MultiWait>(num_outputs);
-    for (int32_t i = 0; i < num_outputs; ++i) {
-      auto collect_shards = [&, i]() {
+    util::MultiWait mwait(num_outputs);
+    // TODO: tune and document cost estimate
+    pool_.ParallelFor(num_outputs, 100000, [&](int64_t start, int64_t end) {
+      tsl::profiler::TraceMe activity(
+        "PjRtComputationClient::ExecuteReplicated_result_handle_shard",
+        tsl::profiler::TraceMeLevel::kInfo);
+      for (int32_t i = start; i < end; ++i) {
         std::vector<std::shared_ptr<PjRtData>> shards(devices.size());
         for (int32_t d = 0; d < devices.size(); d++) {
           std::unique_ptr<xla::PjRtBuffer> buffer = std::move(results[d][i]);
@@ -696,18 +697,17 @@ PjRtComputationClient::ExecuteReplicated(
 
         data_handles[i] = std::make_shared<PjRtShardedData>(
             spmd_device_str, output_shapes[i], std::move(shards),
-            output_shardings[i]);
+            // HACK: we don't use the sharding on this DataPtr anyway
+            xla::HloSharding::Unknown().ToProto());
         TF_VLOG(5) << "Created sharded data with shape "
                    << data_handles[i]->shape().ToString();
-      };
-      env::ScheduleIoClosure(
-          util::MultiWait::Completer(mwait, std::move(collect_shards)));
-    }
-    mwait->Wait();
+        mwait.Done();
+      }
+    });
+    mwait.Wait();
   }
 
-  auto mwait = std::make_shared<util::MultiWait>(1);
-  auto lockfn = [&, this, returned_futures = std::move(*returned_futures),
+  pool_.Schedule([&, this, returned_futures = std::move(*returned_futures),
                  timed]() mutable {
     // Grab the shared lock and block the `WaitDeviceOps` until buffer is
     // ready. Since this is the SPMD code path. There is no points to grab
@@ -729,8 +729,7 @@ PjRtComputationClient::ExecuteReplicated(
           timed.reset();
           TF_VLOG(3) << "ExecuteReplicated returned_future->OnReady finished";
         });
-  };
-  env::ScheduleIoClosure(util::MultiWait::Completer(mwait, std::move(lockfn)));
+  });
 
   TF_VLOG(1) << "Returning " << data_handles.size() << " sharded outputs.";
   return data_handles;
