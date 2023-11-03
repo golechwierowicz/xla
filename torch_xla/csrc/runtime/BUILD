@@ -288,6 +288,7 @@ cc_library(
     deps = [
         ":metrics",
         ":tf_logging",
+        "@tsl//tsl/platform:env"
     ],
 )
 
