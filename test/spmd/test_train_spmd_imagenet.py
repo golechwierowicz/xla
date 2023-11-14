@@ -1,4 +1,26 @@
 import args_parse
+import os
+import schedulers
+import numpy as np
+from functools import partial
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import torch.optim as optim
+import torchvision
+import torchvision.transforms as transforms
+import torch_xla
+import torch_xla.debug.metrics as met
+import torch_xla.distributed.parallel_loader as pl
+from torch_xla.distributed.fsdp.wrap import (recursive_wrap,
+                                             transformer_auto_wrap_policy)
+from torch_xla.distributed.fsdp.utils import checkpoint_module
+from torch_xla import runtime as xr
+import torch_xla.utils.utils as xu
+import torch_xla.core.xla_model as xm
+import torch_xla.debug.profiler as xp
+import torch_xla.test.test_utils as test_utils
+import torch_xla.distributed.spmd as xs
 
 SUPPORTED_MODELS = [
     'alexnet', 'densenet121', 'densenet161', 'densenet169', 'densenet201',
@@ -63,30 +85,7 @@ FLAGS = args_parse.parse_common_options(
     opts=MODEL_OPTS.items(),
 )
 
-import os
-import schedulers
-import numpy as np
-from functools import partial
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-import torch.optim as optim
-import torchvision
-import torchvision.transforms as transforms
-import torch_xla
-import torch_xla.debug.metrics as met
-import torch_xla.distributed.parallel_loader as pl
-from torch_xla.distributed.fsdp.wrap import (recursive_wrap,
-                                             transformer_auto_wrap_policy)
-from torch_xla.distributed.fsdp.utils import checkpoint_module
-from torch_xla import runtime as xr
-import torch_xla.utils.utils as xu
-import torch_xla.core.xla_model as xm
-import torch_xla.debug.profiler as xp
-import torch_xla.test.test_utils as test_utils
-import torch_xla.distributed.spmd as xs
-
-xr.use_spmd(auto=True)
+xr.use_spmd(auto=FLAGS.auto_spmd)
 
 DEFAULT_KWARGS = dict(
     batch_size=128,

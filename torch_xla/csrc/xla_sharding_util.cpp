@@ -30,6 +30,7 @@
 #include "xla/service/sharding_propagation.h"
 #include "xla/service/spmd/spmd_partitioner.h"
 #include "xla/xla.pb.h"
+#include "xla_sharding_util.h"
 
 namespace torch_xla {
 namespace {
@@ -720,8 +721,29 @@ runtime::ComputationClient::DataPtr ShardingUtil::CreateShardedData(
       source_tensors, GetVirtualDevice().toString(), global_shape, sharding);
 }
 
-void ShardingUtil::xla_mark_sharding(const at::Tensor& input,
-                                     xla::OpSharding sharding) {
+std::tuple<std::vector<int64_t>, std::vector<int64_t>>
+ShardingUtil::GetAutoShardingMesh() {
+  std::vector<int64_t> mesh_shape;
+  std::vector<int64_t> device_ids;
+  // TODO(yeounoh) allow custom mesh to be used.
+  return std::make_tuple(mesh_shape, device_ids);
+}
+
+bool ShardingUtil::ReshardParameters(
+    const xla::HloModuleProto& module,
+    std::vector<torch::lazy::BackendDataPtr>* parameters) {
+  std::vector<xla::OpSharding> input_shardings;
+  for (auto sharding : module.spmd_parameters_shardings()) {
+    input_shardings.push_back(sharding);
+  }
+
+  // TODO(yeounoh) Reshard parameters with mismatched sharding.
+
+  return false;
+}
+
+void ShardingUtil::XlaMarkSharding(const at::Tensor& input,
+                                   xla::OpSharding sharding) {
   TORCH_LAZY_COUNTER("XlaMarkSharding", 1);
   XLA_CHECK(UseVirtualDevice())
       << "Please enable SPMD via `torch_xla.runtime.use_spmd()`";
@@ -787,7 +809,7 @@ void ShardingUtil::xla_mark_sharding(const at::Tensor& input,
   XLAGraphExecutor::Get()->RegisterTensor(xtensor->data());
 }
 
-void xla_mark_sharding_dynamo_custom_op(
+void ShardingUtil::XlaMarkShardingDynamoCustomOp(
     const at::Tensor& input, c10::List<at::IntArrayRef> tile_assignment,
     c10::List<at::IntArrayRef> group_assignment,
     c10::List<at::IntArrayRef> replication_groups, int64_t sharding_type) {
@@ -822,7 +844,7 @@ void xla_mark_sharding_dynamo_custom_op(
       tile_assignment_py, group_assignment_py, replication_groups_py,
       ShardingUtil::ShardingType(sharding_type));
 
-  ShardingUtil::xla_mark_sharding(input, op_sharding);
+  ShardingUtil::XlaMarkSharding(input, op_sharding);
 }
 
 // Macro for defining a function that will be run at static initialization time
@@ -847,8 +869,9 @@ TORCH_LIBRARY(xla, m) {
       "xla_mark_sharding_dynamo_custom_op(Tensor input, int[][] "
       "tile_assignment, int[][] group_assignment, int[][] replication_groups, "
       "int sharding_type) -> ()",
-      torch::dispatch(c10::DispatchKey::XLA,
-                      TORCH_FN(torch_xla::xla_mark_sharding_dynamo_custom_op)));
+      torch::dispatch(
+          c10::DispatchKey::XLA,
+          TORCH_FN(torch_xla::ShardingUtil::XlaMarkShardingDynamoCustomOp)));
 }
 
 }  // namespace torch_xla
