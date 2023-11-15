@@ -73,8 +73,7 @@ class PjRtComputationClient : public ComputationClient {
 
   std::vector<std::string> GetAllDevices() const override;
 
-  torch::lazy::hash_t HashCompilationEnv(
-      const torch::lazy::hash_t& seed) const override;
+  torch::lazy::hash_t HashCompilationEnv() override;
 
   int GetProcessIndex() const override { return client_->process_index(); };
 
@@ -117,6 +116,7 @@ class PjRtComputationClient : public ComputationClient {
   std::shared_ptr<std::vector<std::string>> replication_devices_;
   std::unordered_map<std::string, std::unique_ptr<std::shared_mutex>>
       device_locks_;
+  torch::lazy::hash_t comp_env_hash_;
 
   xla::PjRtDevice* StringToPjRtDevice(const std::string& device);
   std::shared_lock<std::shared_mutex> lock_device_shared(

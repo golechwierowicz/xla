@@ -9,8 +9,8 @@
 #include "pjrt_computation_client.h"
 #include "torch_xla/csrc/runtime/computation_client.h"
 #include "torch_xla/csrc/runtime/debug_macros.h"
+#include "torch_xla/csrc/runtime/env_hash.h"
 #include "torch_xla/csrc/runtime/env_vars.h"
-#include "torch_xla/csrc/runtime/hash.h"
 #include "torch_xla/csrc/runtime/multi_wait.h"
 #include "torch_xla/csrc/runtime/stablehlo_helper.h"
 #include "torch_xla/csrc/runtime/tensor_source.h"
@@ -79,6 +79,38 @@ xla::GpuAllocatorConfig GetGpuAllocatorConfig() {
   allocator_config.memory_fraction =
       sys_util::GetEnvDouble(env::kEnvPjrtAllocatorFraction, 0.75);
   return allocator_config;
+}
+
+torch::lazy::hash_t hash_comp_env(
+    std::shared_ptr<xla::PjRtClient> client,
+    std::vector<xla::PjRtDevice*>& ordered_devices) {
+  torch::lazy::hash_t hash = hash::HashXlaEnvVars();
+  auto topology_desc = client->GetTopologyDescription();
+  if (topology_desc.ok()) {
+    // Some backends support a topology description which provides a better
+    // view of the specific compilation environment.
+    auto serialized = topology_desc.value()->Serialize();
+    if (serialized.ok()) {
+      return torch::lazy::HashCombine(
+          hash,
+          torch::lazy::DataHash(serialized->data(), serialized->length()));
+    }
+    // If serialization fails, fallthrough to the manual approach.
+  }
+  std::string platform_name(client->platform_name());
+  std::string platform_version(client->platform_version());
+  hash = torch::lazy::HashCombine(
+      hash, torch::lazy::StringHash(platform_name.c_str()));
+  // platform_version incorporates libtpu version and hardware type.
+  hash = torch::lazy::HashCombine(
+      hash, torch::lazy::StringHash(platform_version.c_str()));
+  // Include global devices in the hash, ensuring order is consistent.
+  for (auto& device : ordered_devices) {
+    std::string device_str(device->ToString());
+    hash = torch::lazy::HashCombine(
+        hash, torch::lazy::StringHash(device_str.c_str()));
+  }
+  return hash;
 }
 
 }  // namespace
@@ -203,6 +235,7 @@ PjRtComputationClient::PjRtComputationClient() {
     string_to_device_.emplace(device_str, device);
     device_locks_.emplace(device_str, std::make_unique<std::shared_mutex>());
   }
+  comp_env_hash_ = hash_comp_env(client_, ordered_devices);
   // manually create the device_locks for SPMD device
   device_locks_.emplace(spmd_device_str, std::make_unique<std::shared_mutex>());
 }
@@ -560,29 +593,11 @@ std::vector<ComputationClient::ComputationPtr> PjRtComputationClient::Compile(
   return computations;
 }
 
-torch::lazy::hash_t PjRtComputationClient::HashCompilationEnv(
-    const torch::lazy::hash_t& seed) const {
-  torch::lazy::hash_t hash =
-      torch::lazy::HashCombine(seed, hash::HashXlaEnvVars());
-  auto topology_desc = client_->GetTopologyDescription();
+torch::lazy::hash_t PjRtComputationClient::HashCompilationEnv() {
   // TODO(jonbolin): Incorporate CompileOptions into the hash. These are
   // deterministically generated at the moment, so they don't need to be
   // included. It will require a small refactor, so punting on this for now.
-  if (topology_desc.ok()) {
-    // Some backends support a topology description which provides a better
-    // view of the specific compilation environment.
-    std::string serialized = ConsumeValue(topology_desc.value()->Serialize());
-    hash = torch::lazy::HashCombine(hash, torch::lazy::DataHash(serialized.data(), serialized.length()));
-  } else {
-    std::string platform_name(client_->platform_name());
-    std::string platform_version(client_->platform_version());
-    hash = torch::lazy::HashCombine(
-        hash, torch::lazy::StringHash(platform_name.c_str()));
-    // platform_version incorporates libtpu version and hardware type.
-    hash = torch::lazy::HashCombine(
-        hash, torch::lazy::StringHash(platform_version.c_str()));
-  }
-  return hash;
+  return comp_env_hash_;
 }
 
 std::vector<ComputationClient::DataPtr>

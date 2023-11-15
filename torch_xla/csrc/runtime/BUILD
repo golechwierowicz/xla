@@ -81,8 +81,8 @@ cc_library(
   deps = [
     ":computation_client",
     ":debug_macros",
+    ":env_hash",
     ":env_vars",
-    ":hash",
     ":multi_wait",
     ":stablehlo_helper",
     ":tensor_source",
@@ -141,12 +141,23 @@ cc_library(
 )
 
 cc_library(
-    name = "hash",
-    srcs = ["hash.cc"],
-    hdrs = ["hash.h"],
+    name = "env_hash",
+    srcs = ["env_hash.cc"],
+    hdrs = ["env_hash.h"],
     deps = [
         ":sys_util",
         "@torch//:headers",
+    ],
+)
+
+cc_test(
+    name = "env_hash_test",
+    size = "small",
+    srcs = ["env_hash_test.cc"],
+    deps = [
+      ":env_hash",
+      "@torch//:libtorch_cpu",  # For torch::lazy::hash
+      "@com_google_googletest//:gtest_main",
     ],
 )
 
